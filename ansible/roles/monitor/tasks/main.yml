@@ -23,6 +23,43 @@
     state: directory
     mode: '0755'
 
+- name: Create grafana provisioning directories
+  ansible.builtin.file:
+    path: "/opt/monitor/grafana/provisioning/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - dashboards
+    - datasources
+
+- name: Create grafana dashboards directory
+  ansible.builtin.file:
+    path: /opt/monitor/grafana/dashboards
+    state: directory
+    mode: '0755'
+
+- name: Copy grafana provisioning config
+  ansible.builtin.copy:
+    src: grafana/provisioning/dashboards/dashboards.yml
+    dest: /opt/monitor/grafana/provisioning/dashboards/dashboards.yml
+    mode: '0644'
+
+- name: Copy grafana datasource config
+  ansible.builtin.copy:
+    src: grafana/provisioning/datasources/prometheus.yml
+    dest: /opt/monitor/grafana/provisioning/datasources/prometheus.yml
+    mode: '0644'
+
+- name: Copy grafana dashboards
+  ansible.builtin.copy:
+    src: "grafana/dashboards/{{ item }}"
+    dest: "/opt/monitor/grafana/dashboards/{{ item }}"
+    mode: '0644'
+  loop:
+    - vm_performance.json
+    - docker_containers.json
+    - app_performance.json
+
 - name: Copy docker-compose.yml
   ansible.builtin.copy:
     src: docker-compose.yml
@@ -76,7 +113,7 @@
     rule: allow
     port: '5601'
     proto: tcp
-    
+
 - name: Create alertmanager config directory
   ansible.builtin.file:
     path: /opt/monitor/alertmanager
