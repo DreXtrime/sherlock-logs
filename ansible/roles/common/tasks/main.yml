@@ -1,0 +1,117 @@
+---
+- name: Configure apt cache proxy
+  ansible.builtin.copy:
+    content: 'Acquire::http::Proxy "{{ apt_cache_url }}";'
+    dest: /etc/apt/apt.conf.d/01proxy
+  when: apt_cache_url != ""
+
+- name: Update and upgrade packages
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: full
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - fail2ban
+      - ufw
+    state: present
+
+- name: Configure unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Create devops user
+  ansible.builtin.user:
+    name: devops
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    create_home: yes
+
+- name: Set devops password
+  ansible.builtin.user:
+    name: devops
+    password: "{{ devops_password | password_hash('sha512') }}"
+
+- name: Set up devops SSH key
+  ansible.posix.authorized_key:
+    user: devops
+    key: "{{ lookup('file', '~/.ssh/devops_key.pub') }}"
+    state: present
+
+- name: Allow devops passwordless rsync via sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/devops-rsync
+    content: "devops ALL=(ALL) NOPASSWD: /usr/bin/rsync"
+    validate: visudo -cf %s
+
+- name: Configure SSH hardening
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+  notify: restart ssh
+
+- name: Allow only devops and vagrant SSH users
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^AllowUsers'
+    line: 'AllowUsers devops vagrant'
+  notify: restart ssh
+
+- name: Disable cloud-init SSH password override
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    content: "PasswordAuthentication no"
+  notify: restart ssh
+
+- name: Set secure umask for all users
+  ansible.builtin.lineinfile:
+    path: /etc/profile
+    line: 'umask 027'
+    regexp: '^umask'
+
+- name: Configure UFW defaults
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+
+- name: Allow SSH through UFW
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Remove old hosts entries
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '192\.168\.56\.'
+    state: absent
+
+- name: Add hosts entries
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ item.ip }} {{ item.name }}"
+    state: present
+  loop: "{{ hosts_entries }}"
+
+- name: Configure fail2ban
+  ansible.builtin.template:
+    src: fail2ban-jail.j2
+    dest: /etc/fail2ban/jail.local
+  notify: restart fail2ban

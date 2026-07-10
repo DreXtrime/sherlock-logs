@@ -1,0 +1,27 @@
+# Connection
+ansible_python_interpreter: /usr/bin/python3
+
+# User
+devops_pub_key_path: "~/.ssh/devops_key.pub"
+
+# APT cache (optional)
+apt_cache_url: ""
+
+# Hosts entries for /etc/hosts
+hosts_entries:
+  - { ip: "192.168.56.10", name: "loadbalancer" }
+  - { ip: "192.168.56.11", name: "webserver01" }
+  - { ip: "192.168.56.12", name: "webserver02" }
+  - { ip: "192.168.56.20", name: "appserver" }
+  - { ip: "192.168.56.40", name: "monitor" }
+
+# Docker
+docker_users:
+  - devops
+
+# Application
+frontend_image: "ghcr.io/drextrime/infra-frontend:latest"
+frontend_port: 8080
+backend_image: "ghcr.io/drextrime/infra-backend:latest"
+backend_port: 5000
+backend_url: "http://192.168.56.20:5000"

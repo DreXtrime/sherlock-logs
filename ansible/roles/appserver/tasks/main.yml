@@ -1,0 +1,16 @@
+---
+- name: Pull backend image
+  community.docker.docker_image:
+    name: "{{ backend_image }}"
+    source: pull
+
+- name: Run backend container
+  community.docker.docker_container:
+    name: infra-backend
+    image: "{{ backend_image }}"
+    restart_policy: unless-stopped
+    ports:
+      - "{{ backend_port }}:{{ backend_port }}"
+    env:
+      HOST_HOSTNAME: "{{ inventory_hostname }}"
+    state: started

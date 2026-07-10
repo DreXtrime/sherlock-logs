@@ -1,0 +1,199 @@
+---
+- name: Create monitor directory
+  ansible.builtin.file:
+    path: /opt/monitor
+    state: directory
+    mode: '0755'
+
+- name: Create prometheus config directory
+  ansible.builtin.file:
+    path: /opt/monitor/prometheus
+    state: directory
+    mode: '0755'
+
+- name: Copy prometheus alerts
+  ansible.builtin.copy:
+    src: prometheus/alerts.yml
+    dest: /opt/monitor/prometheus/alerts.yml
+    mode: '0644'
+
+- name: Create logstash config directory
+  ansible.builtin.file:
+    path: /opt/monitor/logstash
+    state: directory
+    mode: '0755'
+
+- name: Copy docker-compose.yml
+  ansible.builtin.copy:
+    src: docker-compose.yml
+    dest: /opt/monitor/docker-compose.yml
+    mode: '0644'
+
+- name: Copy prometheus config
+  ansible.builtin.copy:
+    src: prometheus/prometheus.yml
+    dest: /opt/monitor/prometheus/prometheus.yml
+    mode: '0644'
+
+- name: Copy logstash config
+  ansible.builtin.copy:
+    src: logstash/logstash.conf
+    dest: /opt/monitor/logstash/logstash.conf
+    mode: '0644'
+
+- name: Create .env file for docker compose
+  ansible.builtin.copy:
+    content: "GRAFANA_PASSWORD={{ grafana_password }}\n"
+    dest: /opt/monitor/.env
+    mode: '0600'
+
+- name: Allow Prometheus through UFW
+  community.general.ufw:
+    rule: allow
+    port: '9090'
+    proto: tcp
+
+- name: Allow Grafana through UFW
+  community.general.ufw:
+    rule: allow
+    port: '3000'
+    proto: tcp
+
+- name: Allow Elasticsearch through UFW
+  community.general.ufw:
+    rule: allow
+    port: '9200'
+    proto: tcp
+
+- name: Allow Logstash through UFW
+  community.general.ufw:
+    rule: allow
+    port: '5044'
+    proto: tcp
+
+- name: Allow Kibana through UFW
+  community.general.ufw:
+    rule: allow
+    port: '5601'
+    proto: tcp
+    
+- name: Create alertmanager config directory
+  ansible.builtin.file:
+    path: /opt/monitor/alertmanager
+    state: directory
+    mode: '0755'
+
+- name: Copy alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: /opt/monitor/alertmanager/alertmanager.yml
+    mode: '0644'
+
+- name: Allow Alertmanager through UFW
+  community.general.ufw:
+    rule: allow
+    port: '9093'
+    proto: tcp
+
+- name: Start monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/monitor
+    state: present
+
+- name: Wait for Kibana to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:5601/api/status"
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 30
+  delay: 10
+
+- name: Create system logs data view
+  ansible.builtin.uri:
+    url: "http://localhost:5601/api/data_views/data_view"
+    method: POST
+    body_format: json
+    headers:
+      kbn-xsrf: "true"
+    body:
+      data_view:
+        title: "logs-system-*"
+        name: "System Logs"
+        timeFieldName: "@timestamp"
+    status_code: [ 200, 400, 409 ]
+
+- name: Create docker logs data view
+  ansible.builtin.uri:
+    url: "http://localhost:5601/api/data_views/data_view"
+    method: POST
+    body_format: json
+    headers:
+      kbn-xsrf: "true"
+    body:
+      data_view:
+        title: "logs-docker-*"
+        name: "Docker Logs"
+        timeFieldName: "@timestamp"
+    status_code: [ 200, 400, 409 ]
+
+- name: Create application logs data view
+  ansible.builtin.uri:
+    url: "http://localhost:5601/api/data_views/data_view"
+    method: POST
+    body_format: json
+    headers:
+      kbn-xsrf: "true"
+    body:
+      data_view:
+        title: "logs-application-*"
+        name: "Application Logs"
+        timeFieldName: "@timestamp"
+    status_code: [ 200, 400, 409 ]
+
+- name: Copy Kibana dashboards
+  ansible.builtin.copy:
+    src: kibana_dashboards.ndjson
+    dest: /opt/monitor/kibana_dashboards.ndjson
+    mode: '0644'
+
+- name: Import Kibana dashboards
+  ansible.builtin.uri:
+    url: "http://localhost:5601/api/saved_objects/_import?overwrite=true"
+    method: POST
+    headers:
+      kbn-xsrf: "true"
+    body_format: form-multipart
+    body:
+      file:
+        filename: kibana_dashboards.ndjson
+        content: "{{ lookup('file', 'kibana_dashboards.ndjson') }}"
+        mime_type: application/ndjson
+    status_code: 200
+
+- name: Wait for Grafana to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/health"
+    status_code: 200
+  register: result
+  until: result.status == 200
+  retries: 30
+  delay: 10
+
+- name: Add Prometheus datasource to Grafana
+  ansible.builtin.uri:
+    url: "http://localhost:3000/api/datasources"
+    method: POST
+    body_format: json
+    user: admin
+    password: "{{ grafana_password }}"
+    force_basic_auth: yes
+    headers:
+      Content-Type: "application/json"
+    body:
+      name: "Prometheus"
+      type: "prometheus"
+      url: "http://prometheus:9090"
+      access: "proxy"
+      isDefault: true
+    status_code: [ 200, 409 ]

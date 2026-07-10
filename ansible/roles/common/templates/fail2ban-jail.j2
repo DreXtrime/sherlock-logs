@@ -1,0 +1,11 @@
+[DEFAULT]
+bantime = 10m
+findtime = 10m
+maxretry = 5
+ignoreip = 192.168.56.1/32
+
+[sshd]
+enabled = true
+port = ssh
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
