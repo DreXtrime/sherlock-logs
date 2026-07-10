@@ -1,4 +1,4 @@
-# look to pull values from .env
+# loop to pull values from .env
 if File.exist?(".env")
   File.foreach(".env") do |line|
     next if line.strip.start_with?("#") || line.strip.empty?
