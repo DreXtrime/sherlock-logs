@@ -1,0 +1,53 @@
+global:
+  # How often Prometheus scrapes all targets
+  scrape_interval: 15s
+  # How often alert rules are evaluated
+  evaluation_interval: 15s
+
+# Alert rules file
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # Prometheus scrapes itself for self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: [ 'localhost:9090' ]
+
+  # Node Exporter - host level metrics (CPU, memory, disk, network) from each VM
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - 'loadbalancer:9100'
+          - 'webserver01:9100'
+          - 'webserver02:9100'
+          - 'appserver:9100'
+          - 'monitor:9100'
+
+  # cAdvisor - per container metrics from each VM
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets:
+          - 'loadbalancer:8081'
+          - 'webserver01:8081'
+          - 'webserver02:8081'
+          - 'appserver:8081'
+          - 'monitor:8081'
+
+  # Application backend - custom app metrics exposed via prometheus_client
+  - job_name: 'app'
+    static_configs:
+      - targets: [ 'appserver:5000' ]
+    metrics_path: '/metrics'
+
+  # Elasticsearch exporter - translates Elasticsearch REST API to Prometheus metrics
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: [ 'elasticsearch-exporter:9114' ]
+
+# Send firing alerts to Alertmanager which routes them to Discord
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093

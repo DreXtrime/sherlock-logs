@@ -1,0 +1,22 @@
+filebeat.inputs:
+  # Collect logs from all Docker containers on this VM
+  # Reads directly from Docker's JSON log files on disk
+  - type: container
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    processors:
+      # Enriches logs with container metadata (name, image, labels)
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+
+  # Collect system logs from the host
+  - type: log
+    paths:
+      - /var/log/syslog
+      - /var/log/dmesg
+    fields:
+      log_type: system
+
+# Ship all collected logs to Logstash on the monitor VM
+output.logstash:
+  hosts: ["192.168.56.40:5044"]

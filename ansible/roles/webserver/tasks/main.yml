@@ -1,0 +1,17 @@
+---
+- name: Pull frontend image
+  community.docker.docker_image:
+    name: "{{ frontend_image }}"
+    source: pull
+
+- name: Run frontend container
+  community.docker.docker_container:
+    name: infra-frontend
+    image: "{{ frontend_image }}"
+    restart_policy: unless-stopped
+    ports:
+      - "{{ frontend_port }}:{{ frontend_port }}"
+    env:
+      BACKEND_URL: "{{ backend_url }}"
+      HOST_HOSTNAME: "{{ inventory_hostname }}"
+    state: started

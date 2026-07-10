@@ -1,0 +1,69 @@
+---
+- name: Run Node Exporter
+  community.docker.docker_container:
+    name: node_exporter
+    image: prom/node-exporter:latest
+    restart_policy: unless-stopped
+    network_mode: host
+    pid_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    state: started
+
+- name: Run cAdvisor
+  community.docker.docker_container:
+    name: cadvisor
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart_policy: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    state: started
+
+- name: Create Filebeat config directory
+  ansible.builtin.file:
+    path: /etc/filebeat
+    state: directory
+    mode: '0755'
+
+- name: Copy Filebeat config
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /etc/filebeat/filebeat.yml
+    mode: '0644'
+
+- name: Run Filebeat
+  community.docker.docker_container:
+    name: filebeat
+    image: docker.elastic.co/beats/filebeat:8.13.0
+    restart_policy: unless-stopped
+    user: root
+    volumes:
+      - /etc/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    state: started
+
+- name: Allow Node Exporter through UFW
+  community.general.ufw:
+    rule: allow
+    port: '9100'
+    proto: tcp
+
+- name: Allow cAdvisor through UFW
+  community.general.ufw:
+    rule: allow
+    port: '8080'
+    proto: tcp
