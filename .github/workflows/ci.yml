@@ -8,7 +8,7 @@ jobs:
   validate-configs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install config-file-validator
         run: go install github.com/Boeing/config-file-validator/v2/cmd/validator@latest
